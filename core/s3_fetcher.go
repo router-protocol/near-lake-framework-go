@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"near-event-listener/near-lake-framework-go/types"
 	"strconv"
 	"strings"
 	"sync"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/router-protocol/near-lake-framework-go/types"
 )
 
 const (

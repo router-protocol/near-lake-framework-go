@@ -2,13 +2,13 @@ package core
 
 import (
 	"fmt"
-	"near-event-listener/near-lake-framework-go/types"
 	"sync"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/client"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/router-protocol/near-lake-framework-go/types"
 )
 
 type LakeConfig struct {
