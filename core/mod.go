@@ -46,18 +46,20 @@ func start(config LakeConfig, messageChannel chan types.StreamMessage, numWorker
 	}
 	fmt.Println("len of Blocks:", len(blocks), config.blocksPreloadPoolSize)
 
-	blockHeightsPrefixes := make(chan uint64, len(blocks))
-	for _, blockHeight := range blocks {
-		blockHeightsPrefixes <- blockHeight
-	}
-	close(blockHeightsPrefixes)
-
+	chunkSize := (len(blocks) + numWorkers - 1) / numWorkers
+	chunkStart := 0
+	chunkEnd := 0
 	var wg sync.WaitGroup
 	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
-		go func() {
+		chunkEnd += chunkSize
+		if chunkEnd > len(blocks) {
+			chunkEnd = len(blocks)
+		}
+		go func(start, end int) {
 			defer wg.Done()
-			for blockHeight := range blockHeightsPrefixes {
+			for j := start; j < end; j++ {
+				blockHeight := blocks[j]
 				message, err := s3Fetcher.FetchStreamerMessage(s3Client, config.s3BucketName, blockHeight)
 				if err != nil {
 					fmt.Println(err)
@@ -65,7 +67,8 @@ func start(config LakeConfig, messageChannel chan types.StreamMessage, numWorker
 				}
 				messageChannel <- *message
 			}
-		}()
+		}(chunkStart, chunkEnd)
+		chunkStart = chunkEnd
 	}
 	wg.Wait()
 	close(messageChannel)

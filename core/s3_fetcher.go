@@ -36,7 +36,6 @@ func (s3fetcher *S3Fetcher) ListBlocks(
 	startFromBlockHeight uint64,
 	numberOfBlocksRequested uint64,
 ) ([]uint64, error) {
-	fmt.Println("aws.Int64(int64(numberOfBlocksRequested * (1 + EstimatedShardsCount))): ", aws.Int64(int64(numberOfBlocksRequested*(1+EstimatedShardsCount))))
 	response, err := s3Client.ListObjectsV2(
 		&s3.ListObjectsV2Input{
 			Bucket:       aws.String(s3BucketName),
@@ -93,16 +92,16 @@ func (s3fetcher *S3Fetcher) FetchStreamerMessage(
 	wg := &sync.WaitGroup{}
 	for _, chunk := range block.Chunks {
 		// Todo: Sort the result in batch request case
-		//wg.Add(1)
-		//go func(shardId uint64) {
-		//	defer wg.Done()
-		shard, err := s3fetcher.FetchShardOrRetry(s3Client, s3BucketName, blockHeight, chunk.ShardId)
-		if err != nil {
-			fmt.Println(err)
-		} else {
-			message.Shards = append(message.Shards, *shard)
-		}
-		//}(chunk.ShardId)
+		wg.Add(1)
+		go func(shardId uint64) {
+			defer wg.Done()
+			shard, err := s3fetcher.FetchShardOrRetry(s3Client, s3BucketName, blockHeight, chunk.ShardId)
+			if err != nil {
+				fmt.Println(err)
+			} else {
+				message.Shards = append(message.Shards, *shard)
+			}
+		}(chunk.ShardId)
 	}
 	wg.Wait()
 	return &message, nil
