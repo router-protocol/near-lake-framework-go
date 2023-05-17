@@ -16,7 +16,7 @@ import (
 
 const (
 	EstimatedShardsCount = 4
-	MaxRetryCount        = 10
+	MaxRetryCount        = 15
 )
 
 type S3Fetcher struct{}
@@ -73,19 +73,19 @@ func (s3fetcher *S3Fetcher) FetchStreamerMessage(
 		RequestPayer: aws.String(s3.RequestPayerRequester),
 	})
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("6", err)
 		return nil, err
 	}
 	var bodyBytes = new(bytes.Buffer)
 	_, err = bodyBytes.ReadFrom(blockViewResponse.Body)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("7", err)
 		return nil, err
 	}
 	var block = types.BlockView{}
 	err = json.Unmarshal(bodyBytes.Bytes(), &block)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("8", err)
 		return nil, err
 	}
 	message.Block = block
@@ -95,9 +95,9 @@ func (s3fetcher *S3Fetcher) FetchStreamerMessage(
 		wg.Add(1)
 		go func(shardId uint64) {
 			defer wg.Done()
-			shard, err := s3fetcher.FetchShardOrRetry(s3Client, s3BucketName, blockHeight, chunk.ShardId)
+			shard, err := s3fetcher.FetchShardOrRetry(s3Client, s3BucketName, blockHeight, shardId)
 			if err != nil {
-				fmt.Println(err)
+				// fmt.Println("9", err)
 			} else {
 				message.Shards = append(message.Shards, *shard)
 			}
@@ -115,6 +115,7 @@ func (s3fetcher *S3Fetcher) FetchShardOrRetry(
 ) (*types.IndexerShard, error) {
 	var totalAttempts = 0
 	var shard = types.IndexerShard{}
+	// fmt.Printf("%012d/shard_%d.json\n", blockHeight, shardId)
 	for totalAttempts < MaxRetryCount {
 		shardViewResponse, err := s3Client.GetObject(&s3.GetObjectInput{
 			Bucket:       aws.String(s3BucketName),
@@ -122,7 +123,7 @@ func (s3fetcher *S3Fetcher) FetchShardOrRetry(
 			RequestPayer: aws.String(s3.RequestPayerRequester),
 		})
 		if err != nil {
-			fmt.Println(err)
+			fmt.Println("10", err)
 			totalAttempts++
 			continue
 		}
@@ -130,13 +131,13 @@ func (s3fetcher *S3Fetcher) FetchShardOrRetry(
 		_, err = bodyBytes.ReadFrom(shardViewResponse.Body)
 		if err != nil {
 			totalAttempts++
-			fmt.Println(err)
+			fmt.Println("11", err)
 			time.Sleep(1 * time.Second)
 			continue
 		}
 		err = json.Unmarshal(bodyBytes.Bytes(), &shard)
 		if err != nil {
-			fmt.Println(err)
+			fmt.Printf("%012d/shard_%d.json: err: %s", blockHeight, shardId, err)
 			return nil, err
 		}
 		return &shard, nil

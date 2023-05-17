@@ -24,24 +24,23 @@ func TestFetchStreamerMessage(t *testing.T) {
 	if config.s3Config != nil {
 		s3Client = s3.New(*config.s3Config)
 	}
-	for {
-		s3Fetcher := S3Fetcher{}
-		blockHeightsPrefixes, err := s3Fetcher.ListBlocks(s3Client, "near-lake-data-testnet", 122033824, 100)
+
+	s3Fetcher := S3Fetcher{}
+	blockHeightsPrefixes, err := s3Fetcher.ListBlocks(s3Client, "near-lake-data-testnet", 122033824, 100)
+	if err != nil {
+		fmt.Println("3", err)
+	}
+	// if len(blockHeightsPrefixes) <= 0 {
+	// 	continue
+	// }
+
+	for _, blockHeight := range blockHeightsPrefixes {
+		message, err := s3Fetcher.FetchStreamerMessage(s3Client, config.s3BucketName, blockHeight)
 		if err != nil {
-			fmt.Println(err)
-		}
-		if len(blockHeightsPrefixes) <= 0 {
+			fmt.Println("4", err)
 			continue
 		}
-
-		for _, blockHeight := range blockHeightsPrefixes {
-			message, err := s3Fetcher.FetchStreamerMessage(s3Client, config.s3BucketName, blockHeight)
-			if err != nil {
-				fmt.Println(err)
-				continue
-			}
-			fmt.Println(message.Block.Header.Height)
-		}
+		fmt.Println(message.Block.Header.Height)
 	}
 
 }
@@ -65,7 +64,7 @@ func TestListBlocks(t *testing.T) {
 		s3Fetcher := S3Fetcher{}
 		blockHeightsPrefixes, err := s3Fetcher.ListBlocks(s3Client, "near-lake-data-testnet", 122033824, 100)
 		if err != nil {
-			fmt.Println(err)
+			fmt.Println("5", err)
 		}
 		if len(blockHeightsPrefixes) <= 0 {
 			continue
