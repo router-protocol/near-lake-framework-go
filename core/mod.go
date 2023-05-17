@@ -45,6 +45,9 @@ func start(config LakeConfig, messageChannel chan types.StreamMessage, numWorker
 		fmt.Println("1", err)
 		return
 	}
+	if len(blocks) == 0 {
+		return
+	}
 	//if workers are greater than number of blocks
 	if len(blocks) <= numWorkers {
 		numWorkers = len(blocks)
