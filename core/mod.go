@@ -20,19 +20,18 @@ type LakeConfig struct {
 	blocksPreloadPoolSize uint64
 }
 
-func Streamer(config LakeConfig, numWorkers int) chan types.StreamMessage {
+func Streamer(config LakeConfig, numWorkers int) (chan types.StreamMessage, chan bool) {
 	fmt.Println("Starting Streamer...")
-	messageChannel := make(chan types.StreamMessage, numWorkers)
-	go func(cfg LakeConfig, mc chan types.StreamMessage, workers int) {
-		start(cfg, mc, workers)
-		fmt.Println("Streamer ended.")
-	}(config, messageChannel, numWorkers)
-	return messageChannel
+	messageChannel, closeSignal := start(config, numWorkers)
+	return messageChannel, closeSignal
 }
 
-func start(config LakeConfig, messageChannel chan types.StreamMessage, numWorkers int) {
+func start(config LakeConfig, numWorkers int) (chan types.StreamMessage, chan bool) {
+	messageChannel := make(chan types.StreamMessage, numWorkers)
+	closeSignal := make(chan bool)
+
 	awsSession, _ := session.NewSession(&aws.Config{
-		Region: aws.String("eu-central-1"),
+		Region: aws.String(config.s3RegionName),
 	})
 	s3Client := s3.New(awsSession)
 	if config.s3Config != nil {
@@ -40,50 +39,59 @@ func start(config LakeConfig, messageChannel chan types.StreamMessage, numWorker
 	}
 	s3Fetcher := S3Fetcher{}
 
-	blocks, err := s3Fetcher.ListBlocks(s3Client, config.s3BucketName, config.startBlockHeight, config.blocksPreloadPoolSize)
-	if err != nil {
-		fmt.Println("1", err)
-		return
-	}
-	if len(blocks) == 0 {
-		return
-	}
-	//if workers are greater than number of blocks
-	if len(blocks) <= numWorkers {
-		numWorkers = len(blocks)
-	}
-	// fmt.Println("len of Blocks:", len(blocks), numWorkers)
-	startTime := time.Now()
-	blockHeightsPerWorker := (len(blocks) + numWorkers - 1) / numWorkers
-	// fmt.Println("blockHeightsPerWorker", blockHeightsPerWorker)
-	var wg sync.WaitGroup
-	for i := 0; i < numWorkers; i++ {
-		wg.Add(1)
-		go func(workerIndex int) {
-			defer wg.Done()
-			startIndex := workerIndex * blockHeightsPerWorker
-			endIndex := ((workerIndex + 1) * blockHeightsPerWorker) - 1
-			//When no more blocks remain to assign go routine
-			if startIndex > len(blocks)-1 {
-				// fmt.Println("no block left")
-				return
-			}
-			if endIndex > len(blocks)-1 {
-				endIndex = len(blocks) - 1
-			}
-			for _, blockHeight := range blocks[startIndex : endIndex+1] {
-				message, err := s3Fetcher.FetchStreamerMessage(s3Client, config.s3BucketName, blockHeight)
-				if err != nil {
-					fmt.Println(err)
-					continue
-				}
-				messageChannel <- *message
-			}
-		}(i)
-	}
-	wg.Wait()
-	close(messageChannel)
+	go func() {
+		blocks, err := s3Fetcher.ListBlocks(s3Client, config.s3BucketName, config.startBlockHeight, config.blocksPreloadPoolSize)
+		if err != nil {
+			fmt.Println("1", err)
+			return
+		}
+		if len(blocks) == 0 {
+			return
+		}
 
-	endTime := time.Now()
-	fmt.Printf("Processed %d blocks in %v\n", len(blocks), endTime.Sub(startTime))
+		if len(blocks) <= numWorkers {
+			numWorkers = len(blocks)
+		}
+
+		startTime := time.Now()
+		blockHeightsPerWorker := (len(blocks) + numWorkers - 1) / numWorkers
+
+		var wg sync.WaitGroup
+		for i := 0; i < numWorkers; i++ {
+			wg.Add(1)
+			go func(workerIndex int) {
+				defer wg.Done()
+				startIndex := workerIndex * blockHeightsPerWorker
+				endIndex := ((workerIndex + 1) * blockHeightsPerWorker) - 1
+
+				if startIndex > len(blocks)-1 {
+					return
+				}
+				if endIndex > len(blocks)-1 {
+					endIndex = len(blocks) - 1
+				}
+				for _, blockHeight := range blocks[startIndex : endIndex+1] {
+					message, err := s3Fetcher.FetchStreamerMessage(s3Client, config.s3BucketName, blockHeight)
+					if err != nil {
+						fmt.Println(err)
+						continue
+					}
+
+					select {
+					case messageChannel <- *message:
+					case <-closeSignal:
+						return
+					}
+				}
+			}(i)
+		}
+		wg.Wait()
+		close(messageChannel)
+
+		endTime := time.Now()
+		fmt.Printf("Processed %d blocks in %v\n", len(blocks), endTime.Sub(startTime))
+		fmt.Println("Streamer ended.")
+	}()
+
+	return messageChannel, closeSignal
 }
