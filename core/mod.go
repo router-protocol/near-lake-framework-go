@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -20,15 +21,15 @@ type LakeConfig struct {
 	blocksPreloadPoolSize uint64
 }
 
-func Streamer(config LakeConfig, numWorkers int) (chan types.StreamMessage, chan bool) {
+func Streamer(ctx context.Context, config LakeConfig) chan types.StreamMessage {
 	fmt.Println("Starting Streamer...")
-	messageChannel, closeSignal := start(config, numWorkers)
-	return messageChannel, closeSignal
+	messageChannel := start(ctx, config)
+	return messageChannel
 }
 
-func start(config LakeConfig, numWorkers int) (chan types.StreamMessage, chan bool) {
-	messageChannel := make(chan types.StreamMessage, numWorkers)
-	closeSignal := make(chan bool)
+func start(ctx context.Context, config LakeConfig) chan types.StreamMessage {
+	messageChannel := make(chan types.StreamMessage)
+	// closeSignal := make(chan bool)
 
 	awsSession, _ := session.NewSession(&aws.Config{
 		Region: aws.String(config.s3RegionName),
@@ -48,10 +49,7 @@ func start(config LakeConfig, numWorkers int) (chan types.StreamMessage, chan bo
 		if len(blocks) == 0 {
 			return
 		}
-
-		if len(blocks) <= numWorkers {
-			numWorkers = len(blocks)
-		}
+		numWorkers := len(blocks)
 
 		startTime := time.Now()
 		blockHeightsPerWorker := (len(blocks) + numWorkers - 1) / numWorkers
@@ -79,7 +77,7 @@ func start(config LakeConfig, numWorkers int) (chan types.StreamMessage, chan bo
 
 					select {
 					case messageChannel <- *message:
-					case <-closeSignal:
+					case <-ctx.Done():
 						return
 					}
 				}
@@ -93,5 +91,5 @@ func start(config LakeConfig, numWorkers int) (chan types.StreamMessage, chan bo
 		fmt.Println("Streamer ended.")
 	}()
 
-	return messageChannel, closeSignal
+	return messageChannel
 }
