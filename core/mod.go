@@ -21,13 +21,13 @@ type LakeConfig struct {
 	blocksPreloadPoolSize uint64
 }
 
-func Streamer(ctx context.Context, config LakeConfig) chan types.StreamMessage {
+func Streamer(ctx context.Context, config LakeConfig, numOfWorkers int) chan types.StreamMessage {
 	fmt.Println("Starting Streamer...")
-	messageChannel := start(ctx, config)
+	messageChannel := start(ctx, config, numOfWorkers)
 	return messageChannel
 }
 
-func start(ctx context.Context, config LakeConfig) chan types.StreamMessage {
+func start(ctx context.Context, config LakeConfig, numOfWorkers int) chan types.StreamMessage {
 	messageChannel := make(chan types.StreamMessage)
 	// closeSignal := make(chan bool)
 
@@ -49,7 +49,10 @@ func start(ctx context.Context, config LakeConfig) chan types.StreamMessage {
 		if len(blocks) == 0 {
 			return
 		}
-		numWorkers := len(blocks)
+		numWorkers := numOfWorkers
+		if len(blocks) < numWorkers {
+			numWorkers = len(blocks)
+		}
 
 		startTime := time.Now()
 		blockHeightsPerWorker := (len(blocks) + numWorkers - 1) / numWorkers
